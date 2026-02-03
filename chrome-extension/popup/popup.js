@@ -309,7 +309,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             // Show result to user
             if (resp.success) {
-              showToast(`Success! Found ${resp.count} wireless numbers!`, true);
+              showToast(`Success! Processed ${resp.count} agents!`, true);
             } else {
               showToast(`Scrape failed: ${resp.error}`, false);
             }
