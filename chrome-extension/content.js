@@ -119,8 +119,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     async function scrapeCurrentPage() {
       // Find agent links
+      // Based on analysis: links contain /agentprofile/ or /realestateagents/ and usually end with an _ID or slug
       const links = Array.from(document.querySelectorAll('a[href*="/realestateagents/"], a[href*="/agentprofile/"]'));
-      const uniqueAgents = new Map(); // id -> url
+      const uniqueAgents = new Map(); // id -> { url, name }
 
       links.forEach(link => {
         const href = link.href;
@@ -128,12 +129,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           const parts = href.split("/");
           const lastPart = parts[parts.length - 1].split("?")[0];
           if (lastPart && (href.includes("/agentprofile/") || href.includes("/realestateagents/"))) {
-            uniqueAgents.set(lastPart, href);
+            // Get name from link text if possible (fallback if API fails)
+            const name = link.innerText.trim();
+            if (!uniqueAgents.has(lastPart) || (name && !uniqueAgents.get(lastPart).name)) {
+              uniqueAgents.set(lastPart, { url: href, name: name });
+            }
           }
         } catch (e) { }
       });
 
-      return Array.from(uniqueAgents.entries()); // [[id, url], ...]
+      return Array.from(uniqueAgents.entries()); // [[id, {url, name}], ...]
     }
 
     async function goToNextPage() {
@@ -187,16 +192,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
 
         let newAgentsCount = 0;
-        for (const [id, url] of agents) {
+        for (const [id, info] of agents) {
           if (seenIds.has(id)) continue;
           seenIds.add(id);
           newAgentsCount++;
 
           updateOverlay(`Fetching details for ${id}...`);
           const details = await fetchAgentDetails(id);
-          if (details) {
-            allRows.push([id, details.name, details.phone, details.address, url]);
+
+          // Only save if phone exists
+          if (details && details.phone) {
+            allRows.push([id, details.name, details.phone, details.address, info.url]);
           }
+
           await delay(200); // Rate limit
           updateOverlay(`Collected: ${allRows.length - 1} agents (${newAgentsCount} new this page)`);
         }
