@@ -11,7 +11,7 @@
   ],
   "host_permissions": [
     "https://www.realtor.com/*",
-    "https://deal-machine-scraper.onrender.com/*"
+    "https://retail-scraper-backend.onrender.com/*"
   ],
   "background": {
     "service_worker": "background.js"

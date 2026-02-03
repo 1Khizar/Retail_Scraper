@@ -31,7 +31,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const toastContainer = document.getElementById("toastContainer");
 
-  const API_BASE_URL = "http://localhost:3000/api"; // Localhost for development
+  const API_BASE_URL = "https://retail-scraper-backend.onrender.com/api";
   function showToast(message, isSuccess) {
     console.log(`Toast: ${message} (${isSuccess ? 'success' : 'error'})`);
     const toast = document.createElement("div");

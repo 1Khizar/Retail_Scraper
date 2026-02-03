@@ -7,10 +7,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "startScraping") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const tab = tabs[0];
-      if (!tab || !tab.url.includes("dealmachine.com")) {
+      if (!tab || !tab.url.includes("realtor.com")) {
         sendResponse({
           success: false,
-          error: "Please navigate to dealmachine.com first.",
+          error: "Please navigate to realtor.com first.",
         });
         return;
       }
