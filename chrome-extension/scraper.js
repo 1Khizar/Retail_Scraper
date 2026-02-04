@@ -1,24 +1,44 @@
 // scraper.js
-(async () => {
-    const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+// This file is a mirror of content.js but can be used for manual injection if needed.
+console.log("Retail Scraper Scraper Script Loaded.");
 
-    // UI Overlay for progress
+(async () => {
+    // Prevent multiple instances
+    if (window.RETAIL_SCRAPER_EXECUTING) {
+        console.log("Retail Scraper is already executing.");
+        return;
+    }
+    window.RETAIL_SCRAPER_EXECUTING = true;
+
+    const STORAGE_KEYS = {
+        ACTIVE: "retail_scraper_active",
+        DATA: "retail_scraper_data",
+        PAGE: "retail_scraper_page",
+        TOKEN: "retail_scraper_token"
+    };
+
+    const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+    const getStorage = (keys) => new Promise(r => chrome.storage.local.get(keys, r));
+    const setStorage = (obj) => new Promise(r => chrome.storage.local.set(obj, r));
+
     function createOverlay() {
-        const overlay = document.createElement("div");
-        overlay.id = "scraper-overlay";
-        overlay.style.position = "fixed";
-        overlay.style.top = "20px";
-        overlay.style.right = "20px";
-        overlay.style.backgroundColor = "rgba(0, 0, 0, 0.9)";
-        overlay.style.color = "#00ff9d";
-        overlay.style.padding = "15px";
-        overlay.style.borderRadius = "8px";
-        overlay.style.zIndex = "999999";
-        overlay.style.fontFamily = "monospace";
-        overlay.style.border = "1px solid #00ff9d";
-        overlay.style.boxShadow = "0 0 10px #00ff9d";
-        overlay.innerHTML = "<div>Initializing Retail Scraper...</div>";
-        document.body.appendChild(overlay);
+        let overlay = document.getElementById("scraper-overlay");
+        if (!overlay) {
+            overlay = document.createElement("div");
+            overlay.id = "scraper-overlay";
+            overlay.style.position = "fixed";
+            overlay.style.top = "20px";
+            overlay.style.right = "20px";
+            overlay.style.backgroundColor = "rgba(0, 0, 0, 0.9)";
+            overlay.style.color = "#00ff9d";
+            overlay.style.padding = "15px";
+            overlay.style.borderRadius = "8px";
+            overlay.style.zIndex = "9999999";
+            overlay.style.fontFamily = "monospace";
+            overlay.style.border = "1px solid #00ff9d";
+            overlay.style.boxShadow = "0 0 10px #00ff9d";
+            document.body.appendChild(overlay);
+        }
         return overlay;
     }
 
@@ -27,7 +47,6 @@
         if (el) el.innerHTML = `<div>${text}</div>`;
     }
 
-    // GraphQL Query
     const QUERY = `
     query AgentBrandingProfile($agentBrandingInput: AgentBrandingInput) {
       agent_branding(agent_branding_input: $agentBrandingInput) {
@@ -61,11 +80,7 @@
                     operationName: "AgentBrandingProfile",
                     query: QUERY,
                     variables: {
-                        agentBrandingInput: {
-                            profile_id: agentId,
-                            fulfillment_id: null,
-                            nrds_id: null
-                        }
+                        agentBrandingInput: { profile_id: agentId, fulfillment_id: null, nrds_id: null }
                     }
                 })
             });
@@ -81,11 +96,8 @@
             }
             const addr = branding.office?.address || {};
             const address = [
-                addr.address_formatted_line_1,
-                addr.address_formatted_line_2,
-                addr.city,
-                addr.state_code,
-                addr.postal_code
+                addr.address_formatted_line_1, addr.address_formatted_line_2,
+                addr.city, addr.state_code, addr.postal_code
             ].filter(Boolean).join(", ");
 
             return { name, phone, address };
@@ -96,127 +108,121 @@
     }
 
     async function scrapeCurrentPage() {
-        // Find agent links
-        // Based on analysis: links contain /agentprofile/ or /realestateagents/ and usually end with an _ID or slug
         const links = Array.from(document.querySelectorAll('a[href*="/realestateagents/"], a[href*="/agentprofile/"]'));
-        const uniqueAgents = new Map(); // id -> { url, name }
-
+        const uniqueAgents = new Map();
         links.forEach(link => {
             const href = link.href;
-            try {
-                const parts = href.split("/");
-                const lastPart = parts[parts.length - 1].split("?")[0];
-                if (lastPart && (href.includes("/agentprofile/") || href.includes("/realestateagents/"))) {
-                    // Get name from link text if possible (fallback if API fails)
-                    const name = link.innerText.trim();
-                    if (!uniqueAgents.has(lastPart) || (name && !uniqueAgents.get(lastPart).name)) {
-                        uniqueAgents.set(lastPart, { url: href, name: name });
-                    }
-                }
-            } catch (e) { }
+            const parts = href.split("/");
+            const lastPart = parts[parts.length - 1].split("?")[0];
+            if (lastPart && (href.includes("/agentprofile/") || href.includes("/realestateagents/"))) {
+                uniqueAgents.set(lastPart, { url: href, name: link.innerText.trim() });
+            }
         });
-
-        return Array.from(uniqueAgents.entries()); // [[id, {url, name}], ...]
+        return Array.from(uniqueAgents.entries());
     }
 
     async function goToNextPage() {
-        const nextBtn = document.querySelector("a[href*='pg-'][class*='next'], a[class*='next'] button, a[aria-label='Next']");
-        // Or find by text
-        const allLinks = Array.from(document.querySelectorAll("a"));
-        const nextLink = allLinks.find(a => a.innerText.includes("Next"));
-
-        if (nextLink) {
-            nextLink.click();
-            return true;
+        window.scrollTo(0, document.body.scrollHeight);
+        await delay(1000);
+        const nextSelectors = [
+            "a[href*='pg-'][class*='next']", "a[class*='next'] button",
+            "a[aria-label='Next']", "a[aria-label='Goto next page']",
+            "li.pagination__next a", "a.pagination-next"
+        ];
+        for (const sel of nextSelectors) {
+            const btn = document.querySelector(sel);
+            if (btn && !btn.hasAttribute('disabled') && btn.getAttribute('aria-disabled') !== 'true') {
+                btn.click(); return true;
+            }
         }
+        const nextLink = Array.from(document.querySelectorAll("a, button")).find(el => {
+            const t = (el.innerText || el.textContent || "").trim().toLowerCase();
+            return t === "next" || t === "next page" || t.includes("next ›");
+        });
+        if (nextLink) { nextLink.click(); return true; }
         return false;
     }
 
-    // Main Execution
-    try {
-        createOverlay();
-        const allRows = [["Profile ID", "Name", "Phone", "Address", "URL"]];
-        const seenIds = new Set();
-        let page = 1;
-        let running = true;
+    async function runScraperLogic() {
+        try {
+            createOverlay();
+            const storage = await getStorage([STORAGE_KEYS.DATA, STORAGE_KEYS.PAGE, STORAGE_KEYS.TOKEN]);
+            let data = storage[STORAGE_KEYS.DATA] || [];
+            let page = storage[STORAGE_KEYS.PAGE] || 1;
+            const jwt = storage[STORAGE_KEYS.TOKEN];
 
-        while (running) {
+            if (!jwt) {
+                updateOverlay("Error: Missing JWT token.");
+                await setStorage({ [STORAGE_KEYS.ACTIVE]: false });
+                return;
+            }
+
             updateOverlay(`Scraping Page ${page}...`);
-            // Scroll to load lazy elements
             window.scrollTo(0, document.body.scrollHeight);
-            await delay(2000);
+            await delay(2500);
 
             const agents = await scrapeCurrentPage();
-            updateOverlay(`Found ${agents.length} agents on page ${page}. Fetching details...`);
-            console.log(`Found ${agents.length} agents on page ${page}`);
-
             if (agents.length === 0) {
-                console.log("No agents found, stopping.");
-                break;
+                await delay(3000);
+                const retry = await scrapeCurrentPage();
+                if (retry.length === 0) { await finalizeScrape(data); return; }
+                agents.push(...retry);
             }
 
+            const seenIds = new Set(data.map(r => r[0]));
             for (const [id, info] of agents) {
                 if (seenIds.has(id)) continue;
-                seenIds.add(id);
-
-                updateOverlay(`Fetching details for ${id}...`);
                 const details = await fetchAgentDetails(id);
-
-                // Inclusion Fix: Even if 'details' is null (missing branding), we still save the agent
-                // Fallback to name from the listing if API branding fails
                 const phone = details?.phone || "";
-                if (!phone) {
-                    console.log(`Skipping agent ${id} - No phone number found.`);
-                    continue;
-                }
+                if (!phone) continue;
 
-                const name = details?.name || info.name || id.split('_')[0].replace(/-/g, ' ');
-                const address = details?.address || "";
-
-                allRows.push([id, name, phone, address, info.url]);
-
-                await delay(200); // Rate limit
-                updateOverlay(`Collected: ${allRows.length - 1} agents`);
+                data.push([id, details?.name || info.name || id, phone, details?.address || "", info.url]);
+                updateOverlay(`Collected: ${data.length} agents (Page ${page})`);
+                await delay(300);
             }
 
-            // Next page?
-            // For this version, let's just scrape the current page to ensure stability first, 
-            // OR try next page if user requested "full scraper".
-            // The user said "initiate scraping it scrape the data", implying the current result set.
-            // Python script does pagination. I will attempt pagination once.
-
-            updateOverlay(`Navigating to next page...`);
-            const hasNext = await goToNextPage();
-            if (!hasNext) {
-                console.log("No next page found.");
-                break;
+            await setStorage({ [STORAGE_KEYS.DATA]: data, [STORAGE_KEYS.PAGE]: page });
+            if (await goToNextPage()) {
+                await setStorage({ [STORAGE_KEYS.PAGE]: page + 1 });
+                await delay(8000);
+                runScraperLogic();
+            } else {
+                await finalizeScrape(data);
             }
-            page++;
-            await delay(5000); // Wait for page load
+        } catch (err) {
+            console.error(err);
+            updateOverlay(`Error: ${err.message}`);
         }
-
-        // CSV Export
-        const csvContent = allRows.map(e => e.map(i => `"${String(i || '').replace(/"/g, '""')}"`).join(",")).join("\n");
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", "retail_scraper_data.csv");
-        document.body.appendChild(link);
-        link.click();
-
-        updateOverlay(`Completed! Exported ${allRows.length - 1} agents.`);
-        setTimeout(() => document.getElementById("scraper-overlay").remove(), 5000);
-
-        // Notify Extension/Backend
-        chrome.runtime.sendMessage({
-            action: "scraperComplete",
-            dataCount: allRows.length - 1,
-            success: true
-        });
-
-    } catch (err) {
-        console.error(err);
-        updateOverlay(`Error: ${err.message}`);
     }
+
+    async function finalizeScrape(data) {
+        if (data.length > 0) {
+            const csv = [["Profile ID", "Name", "Phone", "Address", "URL"]].concat(data)
+                .map(e => e.map(i => `"${String(i || '').replace(/"/g, '""')}"`).join(",")).join("\n");
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `retail_scraper_complete_${data.length}.csv`;
+            link.click();
+            updateOverlay(`Completed! Exported ${data.length} agents.`);
+        }
+        await setStorage({ [STORAGE_KEYS.ACTIVE]: false, [STORAGE_KEYS.DATA]: [], [STORAGE_KEYS.PAGE]: 1 });
+        setTimeout(() => document.getElementById("scraper-overlay")?.remove(), 5000);
+    }
+
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === "executeScraperInContent") {
+            (async () => {
+                const s = await getStorage([STORAGE_KEYS.ACTIVE]);
+                if (s[STORAGE_KEYS.ACTIVE]) { sendResponse({ success: true, alreadyRunning: true }); return; }
+                await setStorage({ [STORAGE_KEYS.ACTIVE]: true, [STORAGE_KEYS.DATA]: [], [STORAGE_KEYS.PAGE]: 1, [STORAGE_KEYS.TOKEN]: request.token });
+                runScraperLogic();
+                sendResponse({ success: true });
+            })();
+            return true;
+        }
+    });
+
+    const state = await getStorage([STORAGE_KEYS.ACTIVE]);
+    if (state[STORAGE_KEYS.ACTIVE]) runScraperLogic();
 })();
